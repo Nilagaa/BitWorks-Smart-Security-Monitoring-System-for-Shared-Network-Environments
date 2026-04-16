@@ -1,11 +1,11 @@
-import { Users, Activity, AlertTriangle, Shield, Clock, FlaskConical, ChevronDown, ChevronUp } from "lucide-react";
+import { Users, Activity, AlertTriangle, Shield, Clock, FlaskConical, ChevronDown, ChevronUp, CalendarDays } from "lucide-react";
 import { StatCard } from "../components/StatCard";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { useAuth } from "../context/AuthContext";
 import { useStore } from "../context/StoreContext";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 const DEMO_DOMAINS = ["social-media.example.com", "gambling.example.com", "streaming.example.com", "gaming.example.com"];
 const DEMO_WS = ["PC-03", "PC-05", "PC-08", "PC-11", "PC-13"];
@@ -18,6 +18,28 @@ const DEMO_USERS = [
 
 function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
 
+function buildDateRangeData(start: string, end: string) {
+  if (!start || !end) return null;
+  const s = new Date(start);
+  const e = new Date(end);
+  if (isNaN(s.getTime()) || isNaN(e.getTime()) || s > e) return null;
+  const diffDays = Math.round((e.getTime() - s.getTime()) / 86400000);
+  if (diffDays === 0) return null;
+  const points = [];
+  for (let i = 0; i <= diffDays; i++) {
+    const d = new Date(s);
+    d.setDate(s.getDate() + i);
+    const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const seed = i + 1;
+    points.push({
+      time: label,
+      logins: Math.round(20 + seed * 7 + Math.sin(seed) * 8),
+      events: Math.round(4 + seed * 2 + Math.cos(seed) * 3),
+    });
+  }
+  return points;
+}
+
 export function Dashboard() {
   const { user } = useAuth();
   const isAdmin = user?.role === "Admin";
@@ -25,20 +47,39 @@ export function Dashboard() {
   const [demoPanelOpen, setDemoPanelOpen] = useState(false);
   const [demoLog, setDemoLog] = useState<string[]>([]);
 
+  const todayStr = new Date().toISOString().split("T")[0];
+  const [startDate, setStartDate] = useState(todayStr);
+  const [endDate, setEndDate] = useState(todayStr);
+  const [dateError, setDateError] = useState("");
+
+  const handleStartChange = (val: string) => {
+    setStartDate(val);
+    setDateError("");
+    if (endDate && val > endDate) setDateError("Start date cannot be after end date.");
+  };
+
+  const handleEndChange = (val: string) => {
+    setEndDate(val);
+    setDateError("");
+    if (startDate && val < startDate) setDateError("End date cannot be before start date.");
+  };
+
+  const chartData = useMemo(() => {
+    if (startDate === endDate || !startDate || !endDate) return store.chartData;
+    return buildDateRangeData(startDate, endDate) ?? store.chartData;
+  }, [startDate, endDate, store.chartData]);
+
+  const isMultiDay = startDate !== endDate && !!startDate && !!endDate && !dateError;
+
   const log = (msg: string) => setDemoLog((p) => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...p.slice(0, 9)]);
 
-  // ── Demo triggers ──────────────────────────────────────────────
   const triggerFailedLogin = () => {
     const u = pick(DEMO_USERS);
     const ip = pick(DEMO_IPS);
     const ws = pick(DEMO_WS);
     store.pushLoginRecord({
       timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
-      user: u.email,
-      ip,
-      workstation: ws,
-      device: "Windows PC",
-      status: "Failed",
+      user: u.email, ip, workstation: ws, device: "Windows PC", status: "Failed",
     });
     log(`Failed login: ${u.email} from ${ws} (${ip})`);
   };
@@ -77,15 +118,11 @@ export function Dashboard() {
       severity: "medium",
       type: "Inactive User Login Attempt",
       description: `Inactive account ana.lim@bitworks.com attempted to log in from ${ws} (${ip}).`,
-      source: ip,
-      workstation: ws,
-      timestamp: ts,
-      status: "Open",
+      source: ip, workstation: ws, timestamp: ts, status: "Open",
     });
     log(`Inactive user login attempt from ${ws}`);
   };
 
-  // ── Live data ──────────────────────────────────────────────────
   const recentAlerts = store.alerts.slice(0, 4);
   const recentActivity = store.loginRecords.slice(0, 5);
 
@@ -100,8 +137,6 @@ export function Dashboard() {
             {isAdmin ? "System overview and management controls" : "Activity monitoring and security overview"}
           </p>
         </div>
-
-        {/* Demo Panel Toggle — visible to admin */}
         {isAdmin && (
           <button
             onClick={() => setDemoPanelOpen((v) => !v)}
@@ -114,41 +149,26 @@ export function Dashboard() {
         )}
       </div>
 
-      {/* ── Demo Panel ─────────────────────────────────────────── */}
+      {/* Demo Panel */}
       {isAdmin && demoPanelOpen && (
         <div className="bg-[#0f1420] border border-purple-500/30 rounded-xl p-5">
           <p className="text-purple-400 text-xs font-semibold mb-3 uppercase tracking-wider">
             Demo Simulation Panel — triggers update all pages instantly
           </p>
           <div className="flex flex-wrap gap-2 mb-4">
-            <button
-              onClick={triggerFailedLogin}
-              className="px-3 py-2 bg-red-600/20 border border-red-500/40 rounded-lg text-red-400 hover:bg-red-600/30 text-xs font-medium transition-colors"
-            >
+            <button onClick={triggerFailedLogin} className="px-3 py-2 bg-red-600/20 border border-red-500/40 rounded-lg text-red-400 hover:bg-red-600/30 text-xs font-medium transition-colors">
               Trigger Failed Login
             </button>
-            <button
-              onClick={triggerRestrictedDomain}
-              className="px-3 py-2 bg-orange-600/20 border border-orange-500/40 rounded-lg text-orange-400 hover:bg-orange-600/30 text-xs font-medium transition-colors"
-            >
+            <button onClick={triggerRestrictedDomain} className="px-3 py-2 bg-orange-600/20 border border-orange-500/40 rounded-lg text-orange-400 hover:bg-orange-600/30 text-xs font-medium transition-colors">
               Simulate Restricted Domain
             </button>
-            <button
-              onClick={triggerInactiveLogin}
-              className="px-3 py-2 bg-yellow-600/20 border border-yellow-500/40 rounded-lg text-yellow-400 hover:bg-yellow-600/30 text-xs font-medium transition-colors"
-            >
+            <button onClick={triggerInactiveLogin} className="px-3 py-2 bg-yellow-600/20 border border-yellow-500/40 rounded-lg text-yellow-400 hover:bg-yellow-600/30 text-xs font-medium transition-colors">
               Inactive User Attempt
             </button>
-            <button
-              onClick={triggerAddUser}
-              className="px-3 py-2 bg-blue-600/20 border border-blue-500/40 rounded-lg text-blue-400 hover:bg-blue-600/30 text-xs font-medium transition-colors"
-            >
+            <button onClick={triggerAddUser} className="px-3 py-2 bg-blue-600/20 border border-blue-500/40 rounded-lg text-blue-400 hover:bg-blue-600/30 text-xs font-medium transition-colors">
               Add Test User
             </button>
-            <button
-              onClick={triggerAlert}
-              className="px-3 py-2 bg-purple-600/20 border border-purple-500/40 rounded-lg text-purple-400 hover:bg-purple-600/30 text-xs font-medium transition-colors"
-            >
+            <button onClick={triggerAlert} className="px-3 py-2 bg-purple-600/20 border border-purple-500/40 rounded-lg text-purple-400 hover:bg-purple-600/30 text-xs font-medium transition-colors">
               Generate Alert
             </button>
           </div>
@@ -173,56 +193,78 @@ export function Dashboard() {
             color="blue"
           />
         )}
-        <StatCard
-          title="Active Sessions"
-          value={String(store.activeSessions)}
-          icon={Activity}
-          trend={{ value: "Currently online", isPositive: true }}
-          color="green"
-        />
-        <StatCard
-          title="Failed Login Attempts"
-          value={String(store.failedLoginCount)}
-          icon={AlertTriangle}
-          trend={{ value: "Today", isPositive: false }}
-          color="red"
-        />
-        <StatCard
-          title="Unread Alerts"
-          value={String(store.unreadAlertCount)}
-          icon={Shield}
-          trend={{ value: "Require attention", isPositive: false }}
-          color="yellow"
-        />
+        <StatCard title="Active Sessions" value={String(store.activeSessions)} icon={Activity} trend={{ value: "Currently online", isPositive: true }} color="green" />
+        <StatCard title="Failed Login Attempts" value={String(store.failedLoginCount)} icon={AlertTriangle} trend={{ value: "Today", isPositive: false }} color="red" />
+        <StatCard title="Unread Alerts" value={String(store.unreadAlertCount)} icon={Shield} trend={{ value: "Require attention", isPositive: false }} color="yellow" />
         {!isAdmin && (
-          <StatCard
-            title="Monitored Events"
-            value={String(store.securityEvents.length)}
-            icon={Activity}
-            trend={{ value: "Total detected", isPositive: true }}
-            color="blue"
-          />
+          <StatCard title="Monitored Events" value={String(store.securityEvents.length)} icon={Activity} trend={{ value: "Total detected", isPositive: true }} color="blue" />
         )}
       </div>
 
       {/* Chart + Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-[#0f1420] border border-gray-800 rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-white text-base font-semibold">Activity Monitoring Overview</h2>
-            <span className="text-xs text-gray-500">Today — hourly</span>
+
+          {/* Chart header with date range pickers */}
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-white text-base font-semibold">Activity Monitoring Overview</h2>
+              <p className="text-gray-500 text-xs mt-0.5">
+                {isMultiDay
+                  ? `${new Date(startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} — ${new Date(endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} · daily`
+                  : "Today — hourly (live)"}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <CalendarDays size={14} className="text-gray-500 flex-shrink-0 mt-4" />
+                <div className="flex flex-col">
+                  <label className="text-gray-500 text-xs mb-0.5">Start date</label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => handleStartChange(e.target.value)}
+                    className="px-2 py-1.5 bg-[#1a1f2e] border border-gray-700 rounded-lg text-gray-300 text-xs focus:outline-none focus:border-blue-500 transition-colors"
+                  />
+                </div>
+              </div>
+              <span className="text-gray-600 text-xs mt-4">to</span>
+              <div className="flex flex-col">
+                <label className="text-gray-500 text-xs mb-0.5">End date</label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => handleEndChange(e.target.value)}
+                  className="px-2 py-1.5 bg-[#1a1f2e] border border-gray-700 rounded-lg text-gray-300 text-xs focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+              {(startDate !== todayStr || endDate !== todayStr) && (
+                <button
+                  onClick={() => { setStartDate(todayStr); setEndDate(todayStr); setDateError(""); }}
+                  className="mt-4 px-2 py-1.5 bg-gray-700/50 border border-gray-700 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 text-xs transition-colors"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
           </div>
+
+          {dateError && (
+            <p className="text-red-400 text-xs mb-3">{dateError}</p>
+          )}
+
           <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={store.chartData}>
+            <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-              <XAxis dataKey="time" stroke="#6b7280" tick={{ fontSize: 12 }} />
+              <XAxis dataKey="time" stroke="#6b7280" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
               <YAxis stroke="#6b7280" tick={{ fontSize: 12 }} />
               <Tooltip
                 contentStyle={{ backgroundColor: "#1a1f2e", border: "1px solid #374151", borderRadius: "8px", color: "#fff", fontSize: 12 }}
               />
               <Legend wrapperStyle={{ fontSize: 12, color: "#9ca3af" }} />
-              <Line type="monotone" dataKey="logins" stroke="#3b82f6" strokeWidth={2} dot={false} name="Login Events" />
-              <Line type="monotone" dataKey="events" stroke="#f59e0b" strokeWidth={2} dot={false} name="Security Events" />
+              <Line type="monotone" dataKey="logins" stroke="#3b82f6" strokeWidth={2} dot={isMultiDay ? { r: 3, fill: "#3b82f6" } : false} name="Login Events" />
+              <Line type="monotone" dataKey="events" stroke="#f59e0b" strokeWidth={2} dot={isMultiDay ? { r: 3, fill: "#f59e0b" } : false} name="Security Events" />
             </LineChart>
           </ResponsiveContainer>
         </div>
