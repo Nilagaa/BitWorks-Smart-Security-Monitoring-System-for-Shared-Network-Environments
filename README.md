@@ -153,3 +153,8 @@ Note: Data resets on refresh as this is a frontend-driven prototype.
 Developed as part of an academic project in SAD 003.
 
 ---
+
+## Live Demo
+Access the system here: https://bit-works.netlify.app
+
+---
